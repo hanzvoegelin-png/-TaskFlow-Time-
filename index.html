@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskFlow & Time Manager</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        .task-card {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .task-card:hover {
+            transform: translateY(-2px);
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.3);
+            border-radius: 9999px;
+        }
+        .pulse-slow {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between font-sans antialiased">
+
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        
+        <!-- Header Principal -->
+        <header class="flex justify-between items-center mb-8 pb-4 border-b border-slate-800">
+            <div>
+                <h1 class="text-3xl font-extrabold bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
+                    TaskFlow <span class="text-xs font-semibold px-2 py-1 rounded bg-indigo-500/20 text-indigo-300 ml-2 border border-indigo-500/30">TIME & SCHEDULER</span>
+                </h1>
+                <p class="text-sm text-slate-400 mt-1">Planeje horários, execute e monitore suas pausas em tempo real</p>
+            </div>
+            
+            <div id="liveClock" class="text-right hidden sm:block">
+                <div class="text-2xl font-mono font-bold text-slate-200" id="clockTime">00:00:00</div>
+                <div class="text-xs text-slate-400" id="clockDate">Hoje</div>
+            </div>
+        </header>
+
+        <!-- Painel Hero: Tarefa Em Andamento / Pausada (Ativa) -->
+        <section id="activeTaskPanel" class="hidden mb-8 bg-gradient-to-br from-indigo-950/80 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-2xl p-6 shadow-2xl relative overflow-hidden backdrop-blur-md">
+            <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            
+            <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div class="flex-1 text-center md:text-left">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-3" id="activeStatusBadge">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-slow"></span>
+                        <span id="activeStatusText">EM ANDAMENTO</span>
+                    </div>
+                    <h2 id="activeTaskTitle" class="text-2xl font-bold text-white mb-2 truncate max-w-md">Nome da Tarefa</h2>
+                    <div class="flex flex-wrap items-center justify-center md:justify-start gap-4 text-xs text-slate-400">
+                        <span><i class="far fa-clock text-indigo-400 mr-1"></i> Agendado: <strong id="activeScheduledTime" class="text-slate-200">14:00</strong></span>
+                        <span><i class="fas fa-hourglass-half text-amber-400 mr-1"></i> Duração: <strong id="activeDuration" class="text-slate-200">45m</strong></span>
+                        <span><i class="fas fa-mug-hot text-purple-400 mr-1"></i> Pausa Prevista: <strong id="activePausePlanned" class="text-slate-200">10m</strong></span>
+                    </div>
+                </div>
+
+                <!-- Display Digital do Cronômetro -->
+                <div class="flex flex-col items-center bg-slate-900/90 border border-slate-800 px-6 py-4 rounded-xl shadow-inner min-w-[220px]">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1" id="timerLabel">Tempo Decorrido</span>
+                    <span id="activeTimerDisplay" class="text-4xl font-mono font-extrabold text-indigo-400 tracking-wider">00:00:00</span>
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                        <div id="activeProgressBar" class="bg-indigo-500 h-full w-0 transition-all duration-500"></div>
+                    </div>
+                </div>
+
+                <!-- Botões de Ação Dinâmicos -->
+                <div class="flex md:flex-col gap-2 w-full md:w-auto">
+                    <button id="pauseResumeBtn" onclick="togglePauseActiveTask()" class="flex-1 md:flex-none px-4 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-medium rounded-xl text-xs flex items-center justify-center gap-2 transition">
+                        <i class="fas fa-pause"></i> <span id="pauseBtnText">Pausar</span>
+                    </button>
+                    <button onclick="completeActiveTask()" class="flex-1 md:flex-none px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 transition">
+                        <i class="fas fa-check-circle"></i> Concluir
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Formulário para Criar/Agendar Tarefa -->
+        <section class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-6 shadow-xl mb-8 backdrop-blur-sm">
+            <h3 class="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2">
+                <i class="fas fa-calendar-plus text-indigo-400"></i> Agendar Nova Tarefa
+            </h3>
+            
+            <form id="taskForm" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Título da Tarefa</label>
+                    <input 
+                        type="text" 
+                        id="taskTitle" 
+                        placeholder="Ex: Desenvolver protótipo de tela ou Revisar Código" 
+                        required
+                        class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition"
+                    />
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">Horário de Início</label>
+                        <input 
+                            type="time" 
+                            id="startTime" 
+                            required
+                            class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition"
+                        />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">Duração Est. (minutos)</label>
+                        <input 
+                            type="number" 
+                            id="duration" 
+                            min="1" 
+                            max="480"
+                            placeholder="Ex: 45" 
+                            required
+                            class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition"
+                        />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">Pausa Prevista (minutos)</label>
+                        <input 
+                            type="number" 
+                            id="pauseTime" 
+                            min="0" 
+                            max="120"
+                            placeholder="Ex: 10" 
+                            value="0"
+                            class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition"
+                        />
+                    </div>
+                </div>
+
+                <div class="flex justify-end pt-2">
+                    <button 
+                        type="submit" 
+                        class="w-full sm:w-auto px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition active:scale-95"
+                    >
+                        <i class="fas fa-plus"></i> Agendar Tarefa
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Lista e Filtros de Tarefas -->
+        <section class="bg-slate-800/80 border border-slate-700/60 rounded-2xl shadow-xl overflow-hidden">
+            <!-- Barra Superior de Controle e Filtros -->
+            <div class="p-4 bg-slate-800/50 border-b border-slate-700/50 flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-bold text-slate-300">Minhas Tarefas</span>
+                    <span id="taskCounter" class="text-xs bg-slate-700 text-slate-300 font-semibold px-2 py-0.5 rounded-full">0</span>
+                </div>
+
+                <div class="flex items-center gap-1 bg-slate-900/60 p-1 rounded-xl border border-slate-700/50 text-xs">
+                    <button onclick="setFilter('all')" data-filter="all" class="filter-btn px-3 py-1.5 rounded-lg font-medium text-slate-400 transition">Todas</button>
+                    <button onclick="setFilter('pending')" data-filter="pending" class="filter-btn px-3 py-1.5 rounded-md font-medium text-slate-400 transition">Pendentes</button>
+                    <button onclick="setFilter('active')" data-filter="active" class="filter-btn px-3 py-1.5 rounded-md font-medium text-slate-400 transition">Em Andamento</button>
+                    <button onclick="setFilter('completed')" data-filter="completed" class="filter-btn px-3 py-1.5 rounded-md font-medium text-slate-400 transition">Concluídas</button>
+                </div>
+            </div>
+
+            <!-- Lista de Itens -->
+            <div id="taskList" class="divide-y divide-slate-700/50 min-h-[150px]">
+                <!-- Injetado via JS -->
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="py-12 px-4 text-center hidden">
+                <i class="far fa-clock text-4xl text-slate-600 mb-3"></i>
+                <p class="text-slate-400 font-medium text-sm">Nenhuma tarefa encontrada neste filtro.</p>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // --- ESTADO GLOBAL ---
+        let tasks = JSON.parse(localStorage.getItem('taskflow_timed_tasks')) || [];
+        let currentFilter = 'all';
+        let activeTimerInterval = null;
+
+        // --- REFERÊNCIAS DO DOM ---
+        const taskForm = document.getElementById('taskForm');
+        const taskTitleInput = document.getElementById('taskTitle');
+        const startTimeInput = document.getElementById('startTime');
+        const durationInput = document.getElementById('duration');
+        const pauseTimeInput = document.getElementById('pauseTime');
+        const taskList = document.getElementById('taskList');
+        const emptyState = document.getElementById('emptyState');
+        const taskCounter = document.getElementById('taskCounter');
+
+        // Referências do Painel Ativo (Hero)
+        const activeTaskPanel = document.getElementById('activeTaskPanel');
+        const activeTaskTitle = document.getElementById('activeTaskTitle');
+        const activeStatusBadge = document.getElementById('activeStatusBadge');
+        const activeStatusText = document.getElementById('activeStatusText');
+        const activeScheduledTime = document.getElementById('activeScheduledTime');
+        const activeDuration = document.getElementById('activeDuration');
+        const activePausePlanned = document.getElementById('activePausePlanned');
+        const activeTimerDisplay = document.getElementById('activeTimerDisplay');
+        const activeProgressBar = document.getElementById('activeProgressBar');
+        const timerLabel = document.getElementById('timerLabel');
+        const pauseResumeBtn = document.getElementById('pauseResumeBtn');
+        const pauseBtnText = document.getElementById('pauseBtnText');
+
+        // Set default time em input
+        const now = new Date();
+        startTimeInput.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+        // --- RELÓGIO EM TEMPO REAL ---
+        function updateClock() {
+            const date = new Date();
+            document.getElementById('clockTime').textContent = date.toLocaleTimeString('pt-BR');
+            document.getElementById('clockDate').textContent = date.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // --- PERSISTÊNCIA ---
+        function saveTasks() {
+            localStorage.setItem('taskflow_timed_tasks', JSON.stringify(tasks));
+        }
+
+        // --- CRONÔMETRO GLOBAL ---
+        function startTimerLoop() {
+            if (activeTimerInterval) clearInterval(activeTimerInterval);
+
+            activeTimerInterval = setInterval(() => {
+                const activeTask = tasks.find(t => t.status === 'in_progress' || t.status === 'paused');
+                
+                if (!activeTask) {
+                    activeTaskPanel.classList.add('hidden');
+                    return;
+                }
+
+                // Se em andamento, incrementar tempo trabalhado
+                if (activeTask.status === 'in_progress') {
+                    activeTask.elapsedSeconds = (activeTask.elapsedSeconds || 0) + 1;
+                } else if (activeTask.status === 'paused') {
+                    activeTask.pausedSeconds = (activeTask.pausedSeconds || 0) + 1;
+                }
+
+                saveTasks();
+                updateHeroPanel(activeTask);
+                renderTasks();
+            }, 1000);
+        }
+
+        // --- ATUALIZA PAINEL HERO DE DESTAQUE ---
+        function updateHeroPanel(task) {
+            activeTaskPanel.classList.remove('hidden');
+            activeTaskTitle.textContent = task.title;
+            activeScheduledTime.textContent = task.startTime;
+            activeDuration.textContent = `${task.duration}m`;
+            activePausePlanned.textContent = `${task.pauseTime}m`;
+
+            const totalTargetSeconds = task.duration * 60;
+            const elapsed = task.elapsedSeconds || 0;
+            const progress = Math.min(100, (elapsed / totalTargetSeconds) * 100);
+
+            activeProgressBar.style.width = `${progress}%`;
+
+            if (task.status === 'in_progress') {
+                activeStatusBadge.className = "inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+                activeStatusBadge.querySelector('span').className = "w-2 h-2 rounded-full bg-emerald-400 pulse-slow";
+                activeStatusText.textContent = "EM ANDAMENTO";
+                timerLabel.textContent = "Tempo Executado";
+                activeTimerDisplay.textContent = formatSeconds(elapsed);
+                activeTimerDisplay.className = "text-4xl font-mono font-extrabold text-emerald-400 tracking-wider";
+                pauseResumeBtn.className = "flex-1 md:flex-none px-4 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-medium rounded-xl text-xs flex items-center justify-center gap-2 transition";
+                pauseBtnText.textContent = "Pausar";
+                pauseResumeBtn.querySelector('i').className = "fas fa-pause";
+            } else if (task.status === 'paused') {
+                activeStatusBadge.className = "inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40";
+                activeStatusBadge.querySelector('span').className = "w-2 h-2 rounded-full bg-amber-400";
+                activeStatusText.textContent = "EM PAUSA";
+                timerLabel.textContent = "Tempo em Pausa";
+                activeTimerDisplay.textContent = formatSeconds(task.pausedSeconds || 0);
+                activeTimerDisplay.className = "text-4xl font-mono font-extrabold text-amber-400 tracking-wider";
+                pauseResumeBtn.className = "flex-1 md:flex-none px-4 py-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-medium rounded-xl text-xs flex items-center justify-center gap-2 transition";
+                pauseBtnText.textContent = "Retomar";
+                pauseResumeBtn.querySelector('i').className = "fas fa-play";
+            }
+        }
+
+        function formatSeconds(sec) {
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            const s = sec % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        // --- RENDERIZAÇÃO DA LISTA DE TAREFAS ---
+        function renderTasks() {
+            const filtered = tasks.filter(task => {
+                if (currentFilter === 'pending') return task.status === 'pending';
+                if (currentFilter === 'active') return task.status === 'in_progress' || task.status === 'paused';
+                if (currentFilter === 'completed') return task.status === 'completed';
+                return true;
+            });
+
+            taskCounter.textContent = tasks.length;
+            taskList.innerHTML = '';
+
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+
+                filtered.forEach(task => {
+                    const card = document.createElement('div');
+                    card.className = `task-card p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+                        task.status === 'completed' ? 'bg-slate-900/40 opacity-75' : 'bg-slate-800/40 hover:bg-slate-800/80'
+                    }`;
+
+                    // Cálculo da estimativa de término
+                    const [h, m] = task.startTime.split(':').map(Number);
+                    const totalDurationMinutes = Number(task.duration) + Number(task.pauseTime || 0);
+                    const endMinutes = h * 60 + m + totalDurationMinutes;
+                    const endH = String(Math.floor(endMinutes / 60) % 24).padStart(2, '0');
+                    const endM = String(endMinutes % 60).padStart(2, '0');
+                    const estimatedEndTime = `${endH}:${endM}`;
+
+                    let badgeHTML = '';
+                    if (task.status === 'pending') {
+                        badgeHTML = `<span class="px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-700 text-slate-300">Pendente</span>`;
+                    } else if (task.status === 'in_progress') {
+                        badgeHTML = `<span class="px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Em Andamento</span>`;
+                    } else if (task.status === 'paused') {
+                        badgeHTML = `<span class="px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">Pausado</span>`;
+                    } else if (task.status === 'completed') {
+                        badgeHTML = `<span class="px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30">Concluído</span>`;
+                    }
+
+                    card.innerHTML = `
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-1">
+                                ${badgeHTML}
+                                <h4 class="text-base font-bold ${task.status === 'completed' ? 'line-through text-slate-500' : 'text-slate-100'}">
+                                    ${escapeHTML(task.title)}
+                                </h4>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-4 text-xs text-slate-400 mt-2">
+                                <span><i class="far fa-clock text-slate-500"></i> ${task.startTime} → ${estimatedEndTime}</span>
+                                <span><i class="fas fa-stopwatch text-slate-500"></i> Executado: <strong class="text-slate-300">${formatSeconds(task.elapsedSeconds || 0)}</strong></span>
+                                <span><i class="fas fa-pause-circle text-slate-500"></i> Pausa: <strong class="text-slate-300">${formatSeconds(task.pausedSeconds || 0)}</strong></span>
+                            </div>
+                        </div>
+
+                        <!-- Botões de Controle -->
+                        <div class="flex items-center gap-2 w-full sm:w-auto justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-700/40">
+                            ${task.status !== 'completed' ? `
+                                <button onclick="startTask(${task.id})" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+                                    <i class="fas fa-play text-[10px]"></i> ${task.status === 'in_progress' ? 'Executando' : 'Iniciar'}
+                                </button>
+                                <button onclick="completeTask(${task.id})" class="p-1.5 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 rounded-lg text-xs transition" title="Concluir">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                            ` : ''}
+                            <button onclick="deleteTask(${task.id})" class="p-1.5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 rounded-lg text-xs transition" title="Excluir">
+                                <i class="far fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    `;
+
+                    taskList.appendChild(card);
+                });
+            }
+
+            // Atualizar botões de filtro
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                if (btn.dataset.filter === currentFilter) {
+                    btn.className = 'filter-btn px-3 py-1.5 rounded-lg font-semibold bg-indigo-600 text-white shadow-sm transition';
+                } else {
+                    btn.className = 'filter-btn px-3 py-1.5 rounded-lg font-medium text-slate-400 hover:text-slate-200 transition';
+                }
+            });
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+        }
+
+        // --- AÇÕES DAS TAREFAS ---
+        taskForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newTask = {
+                id: Date.now(),
+                title: taskTitleInput.value.trim(),
+                startTime: startTimeInput.value,
+                duration: parseInt(durationInput.value),
+                pauseTime: parseInt(pauseTimeInput.value) || 0,
+                status: 'pending',
+                elapsedSeconds: 0,
+                pausedSeconds: 0
+            };
+
+            tasks.push(newTask);
+            saveTasks();
+            renderTasks();
+
+            taskTitleInput.value = '';
+            durationInput.value = '';
+            pauseTimeInput.value = '0';
+        });
+
+        function startTask(id) {
+            // Parar qualquer outra em progresso/pausada
+            tasks.forEach(t => {
+                if (t.id !== id && (t.status === 'in_progress' || t.status === 'paused')) {
+                    t.status = 'pending';
+                }
+            });
+
+            const task = tasks.find(t => t.id === id);
+            if (task) {
+                task.status = 'in_progress';
+                saveTasks();
+                renderTasks();
+                updateHeroPanel(task);
+            }
+        }
+
+        function togglePauseActiveTask() {
+            const activeTask = tasks.find(t => t.status === 'in_progress' || t.status === 'paused');
+            if (activeTask) {
+                activeTask.status = activeTask.status === 'in_progress' ? 'paused' : 'in_progress';
+                saveTasks();
+                renderTasks();
+                updateHeroPanel(activeTask);
+            }
+        }
+
+        function completeActiveTask() {
+            const activeTask = tasks.find(t => t.status === 'in_progress' || t.status === 'paused');
+            if (activeTask) {
+                completeTask(activeTask.id);
+            }
+        }
+
+        function completeTask(id) {
+            const task = tasks.find(t => t.id === id);
+            if (task) {
+                task.status = 'completed';
+                saveTasks();
+                renderTasks();
+                const currentActive = tasks.find(t => t.status === 'in_progress' || t.status === 'paused');
+                if (!currentActive) activeTaskPanel.classList.add('hidden');
+            }
+        }
+
+        function deleteTask(id) {
+            tasks = tasks.filter(t => t.id !== id);
+            saveTasks();
+            renderTasks();
+            const currentActive = tasks.find(t => t.status === 'in_progress' || t.status === 'paused');
+            if (!currentActive) activeTaskPanel.classList.add('hidden');
+        }
+
+        function setFilter(filter) {
+            currentFilter = filter;
+            renderTasks();
+        }
+
+        // --- INICIALIZAÇÃO ---
+        window.onload = function() {
+            renderTasks();
+            startTimerLoop();
+            
+            const activeTask = tasks.find(t => t.status === 'in_progress' || t.status === 'paused');
+            if (activeTask) updateHeroPanel(activeTask);
+        };
+    </script>
+</body>
+</html>
