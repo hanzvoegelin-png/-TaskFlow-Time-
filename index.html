@@ -202,6 +202,41 @@
     </div>
 
     <script>
+        // --- SISTEMA DE NOTIFICAÇÕES E ÁUDIO ---
+        function pedirPermissaoNotificacao() {
+            if ("Notification" in window && Notification.permission !== "granted") {
+                Notification.requestPermission();
+            }
+        }
+
+        function tocarSomAlarme(frequencia = 520, tipo = 'sine', duracao = 0.4) {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.type = tipo;
+                oscillator.frequency.setValueAtTime(frequencia, audioCtx.currentTime);
+
+                gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duracao);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + duracao);
+            } catch (e) {
+                console.error("Erro ao emitir áudio:", e);
+            }
+        }
+
+        function dispararNotificacao(titulo, mensagem) {
+            if ("Notification" in window && Notification.permission === "granted") {
+                new Notification(titulo, { body: mensagem });
+            }
+        }
+
         // --- ESTADO GLOBAL ---
         let tasks = JSON.parse(localStorage.getItem('taskflow_timed_tasks')) || [];
         let currentFilter = 'all';
@@ -254,6 +289,19 @@
             if (activeTimerInterval) clearInterval(activeTimerInterval);
 
             activeTimerInterval = setInterval(() => {
+                const date = new Date();
+                const horaAtual = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+
+                // Check de horário agendado de tarefas pendentes
+                tasks.forEach(t => {
+                    if (t.status === 'pending' && t.startTime === horaAtual && !t.notifiedStart) {
+                        tocarSomAlarme(660, 'triangle', 0.8);
+                        dispararNotificacao("📅 Hora da Tarefa!", `Está na hora de iniciar: "${t.title}"`);
+                        t.notifiedStart = true;
+                        saveTasks();
+                    }
+                });
+
                 const activeTask = tasks.find(t => t.status === 'in_progress' || t.status === 'paused');
                 
                 if (!activeTask) {
@@ -261,9 +309,17 @@
                     return;
                 }
 
-                // Se em andamento, incrementar tempo trabalhado
+                // Incrementar tempos
                 if (activeTask.status === 'in_progress') {
                     activeTask.elapsedSeconds = (activeTask.elapsedSeconds || 0) + 1;
+                    
+                    // Alerta de término do tempo estipulado
+                    const totalSegundosAlvo = (activeTask.duration + (activeTask.pauseTime || 0)) * 60;
+                    if (activeTask.elapsedSeconds >= totalSegundosAlvo && !activeTask.notifiedEnd) {
+                        tocarSomAlarme(440, 'sine', 1.2);
+                        dispararNotificacao("⏰ Tempo Esgotado!", `O tempo estipulado para "${activeTask.title}" acabou.`);
+                        activeTask.notifiedEnd = true;
+                    }
                 } else if (activeTask.status === 'paused') {
                     activeTask.pausedSeconds = (activeTask.pausedSeconds || 0) + 1;
                 }
@@ -341,7 +397,6 @@
                         task.status === 'completed' ? 'bg-slate-900/40 opacity-75' : 'bg-slate-800/40 hover:bg-slate-800/80'
                     }`;
 
-                    // Cálculo da estimativa de término
                     const [h, m] = task.startTime.split(':').map(Number);
                     const totalDurationMinutes = Number(task.duration) + Number(task.pauseTime || 0);
                     const endMinutes = h * 60 + m + totalDurationMinutes;
@@ -396,7 +451,6 @@
                 });
             }
 
-            // Atualizar botões de filtro
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 if (btn.dataset.filter === currentFilter) {
                     btn.className = 'filter-btn px-3 py-1.5 rounded-lg font-semibold bg-indigo-600 text-white shadow-sm transition';
@@ -413,6 +467,8 @@
         // --- AÇÕES DAS TAREFAS ---
         taskForm.addEventListener('submit', (e) => {
             e.preventDefault();
+            pedirPermissaoNotificacao(); // Solicita permissão no primeiro envio
+            
             const newTask = {
                 id: Date.now(),
                 title: taskTitleInput.value.trim(),
@@ -421,7 +477,9 @@
                 pauseTime: parseInt(pauseTimeInput.value) || 0,
                 status: 'pending',
                 elapsedSeconds: 0,
-                pausedSeconds: 0
+                pausedSeconds: 0,
+                notifiedStart: false,
+                notifiedEnd: false
             };
 
             tasks.push(newTask);
@@ -434,7 +492,8 @@
         });
 
         function startTask(id) {
-            // Parar qualquer outra em progresso/pausada
+            pedirPermissaoNotificacao();
+            
             tasks.forEach(t => {
                 if (t.id !== id && (t.status === 'in_progress' || t.status === 'paused')) {
                     t.status = 'pending';
@@ -444,6 +503,9 @@
             const task = tasks.find(t => t.id === id);
             if (task) {
                 task.status = 'in_progress';
+                tocarSomAlarme(660, 'triangle', 0.4);
+                dispararNotificacao("🚀 Tarefa Iniciada", `Você começou: "${task.title}"`);
+                
                 saveTasks();
                 renderTasks();
                 updateHeroPanel(task);
@@ -453,7 +515,18 @@
         function togglePauseActiveTask() {
             const activeTask = tasks.find(t => t.status === 'in_progress' || t.status === 'paused');
             if (activeTask) {
-                activeTask.status = activeTask.status === 'in_progress' ? 'paused' : 'in_progress';
+                const voltando = activeTask.status === 'paused';
+                activeTask.status = voltando ? 'in_progress' : 'paused';
+                
+                if (voltando) {
+                    tocarSomAlarme(660, 'triangle', 0.4);
+                    dispararNotificacao("▶️ Tarefa Retomada", `Você retomou: "${activeTask.title}"`);
+                } else {
+                    tocarSomAlarme(350, 'sine', 0.2);
+                    setTimeout(() => tocarSomAlarme(280, 'sine', 0.3), 150);
+                    dispararNotificacao("⏸️ Tarefa Pausada", `Você pausou: "${activeTask.title}"`);
+                }
+
                 saveTasks();
                 renderTasks();
                 updateHeroPanel(activeTask);
@@ -471,6 +544,9 @@
             const task = tasks.find(t => t.id === id);
             if (task) {
                 task.status = 'completed';
+                tocarSomAlarme(880, 'sine', 0.5);
+                dispararNotificacao("✅ Tarefa Concluída!", `Parabéns por finalizar: "${task.title}"`);
+
                 saveTasks();
                 renderTasks();
                 const currentActive = tasks.find(t => t.status === 'in_progress' || t.status === 'paused');
@@ -493,6 +569,7 @@
 
         // --- INICIALIZAÇÃO ---
         window.onload = function() {
+            pedirPermissaoNotificacao();
             renderTasks();
             startTimerLoop();
             
